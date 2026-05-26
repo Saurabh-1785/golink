@@ -1,0 +1,76 @@
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: golink
+      POSTGRES_PASSWORD: golink123
+      POSTGRES_DB: golink
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U golink"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Analytics gRPC Service
+  analytics-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.analytics
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: golink
+      DB_PASSWORD: golink123
+      DB_NAME: golink
+      GRPC_PORT: "50051"
+    ports:
+      - "50051:50051"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # URL Service (main API)
+  url-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: golink
+      DB_PASSWORD: golink123
+      DB_NAME: golink
+      REDIS_ADDR: redis:6379
+      ANALYTICS_GRPC_ADDR: analytics-service:50051
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      analytics-service:
+        condition: service_started
+
+volumes:
+  pgdata:

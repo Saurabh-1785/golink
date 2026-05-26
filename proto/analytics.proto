@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package analytics;
+
+option go_package = "github.com/Saurabh/golink/proto";
+
+// RecordClickRequest is sent when a short URL is accessed.
+message RecordClickRequest {
+  string short_code = 1;
+}
+
+// RecordClickResponse confirms the click was recorded.
+message RecordClickResponse {
+  bool success = 1;
+}
+
+// GetStatsRequest asks for analytics of a short code.
+message GetStatsRequest {
+  string short_code = 1;
+}
+
+// GetStatsResponse returns the click count for a short code.
+message GetStatsResponse {
+  string short_code = 1;
+  int64 click_count = 2;
+  string last_clicked_at = 3;
+}
+
+// AnalyticsService handles click tracking via gRPC.
+service AnalyticsService {
+  rpc RecordClick(RecordClickRequest) returns (RecordClickResponse);
+  rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
+}
