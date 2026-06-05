@@ -46,22 +46,42 @@ func Connect() {
 }
 
 // SaveURL inserts a new short URL mapping into the database.
-func SaveURL(shortCode, longURL string) error {
+// expiresAt is optional — pass nil for no expiration.
+func SaveURL(shortCode, longURL string, expiresAt *time.Time) error {
 	_, err := DB.Exec(
-		"INSERT INTO urls (short_code, long_url) VALUES ($1, $2)",
-		shortCode, longURL,
+		"INSERT INTO urls (short_code, long_url, expires_at) VALUES ($1, $2, $3)",
+		shortCode, longURL, expiresAt,
 	)
 	return err
 }
 
 // GetLongURL retrieves the original URL for a given short code.
+// Returns an error if the URL has expired.
 func GetLongURL(shortCode string) (string, error) {
 	var longURL string
+	var expiresAt sql.NullTime
+
 	err := DB.QueryRow(
-		"SELECT long_url FROM urls WHERE short_code = $1",
+		"SELECT long_url, expires_at FROM urls WHERE short_code = $1",
 		shortCode,
-	).Scan(&longURL)
-	return longURL, err
+	).Scan(&longURL, &expiresAt)
+	if err != nil {
+		return "", err
+	}
+
+	// Check expiration
+	if expiresAt.Valid && time.Now().After(expiresAt.Time) {
+		return "", fmt.Errorf("URL has expired")
+	}
+
+	return longURL, nil
+}
+
+// ShortCodeExists checks if a short code is already taken.
+func ShortCodeExists(shortCode string) bool {
+	var id int
+	err := DB.QueryRow("SELECT id FROM urls WHERE short_code = $1", shortCode).Scan(&id)
+	return err == nil
 }
 
 // InsertAnalytics creates an analytics row for a new short code.

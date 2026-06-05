@@ -57,6 +57,11 @@ func SetCachedURL(shortCode, longURL string) {
 	}
 }
 
+// DeleteCachedURL removes a short code from the Redis cache.
+func DeleteCachedURL(shortCode string) {
+	Client.Del(Ctx, "url:"+shortCode)
+}
+
 // getEnv reads an env variable with a fallback default.
 func getEnv(key, fallback string) string {
 	val := os.Getenv(key)

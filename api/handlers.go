@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -18,7 +19,9 @@ import (
 
 // ShortenRequest is the JSON body for POST /shorten.
 type ShortenRequest struct {
-	URL string `json:"url"`
+	URL           string `json:"url"`
+	CustomAlias   string `json:"custom_alias,omitempty"`    // optional
+	ExpiresInHours int   `json:"expires_in_hours,omitempty"` // optional; 0 = never
 }
 
 // ShortenResponse is the JSON response for POST /shorten.
@@ -60,11 +63,31 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate a unique short code
-	shortCode := GenerateShortCode()
+	// Determine short code (custom alias or auto-generated)
+	shortCode := req.CustomAlias
+	if shortCode != "" {
+		// Validate: only alphanumeric, 3-10 chars
+		if len(shortCode) < 3 || len(shortCode) > 10 {
+			http.Error(w, `{"error": "custom_alias must be 3-10 characters"}`, http.StatusBadRequest)
+			return
+		}
+		if postgres.ShortCodeExists(shortCode) {
+			http.Error(w, `{"error": "custom alias already taken"}`, http.StatusConflict)
+			return
+		}
+	} else {
+		shortCode = GenerateShortCode()
+	}
+
+	// Compute optional expiry time
+	var expiresAt *time.Time
+	if req.ExpiresInHours > 0 {
+		t := time.Now().Add(time.Duration(req.ExpiresInHours) * time.Hour)
+		expiresAt = &t
+	}
 
 	// Save to PostgreSQL
-	if err := postgres.SaveURL(shortCode, req.URL); err != nil {
+	if err := postgres.SaveURL(shortCode, req.URL, expiresAt); err != nil {
 		log.Println("DB save error:", err)
 		http.Error(w, `{"error": "could not save URL"}`, http.StatusInternalServerError)
 		return
@@ -93,18 +116,28 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	shortCode := mux.Vars(r)["shortCode"]
 
-	// Step 1: Check Redis cache
+	// Step 1: Check Redis cache (cache doesn't store expiry, so always verify via DB on miss)
 	if longURL, found := goredis.GetCachedURL(shortCode); found {
+		// Verify the URL hasn't expired in DB (lightweight check)
+		if _, err := postgres.GetLongURL(shortCode); err != nil {
+			goredis.DeleteCachedURL(shortCode)
+			http.Error(w, `{"error": "URL has expired or not found"}`, http.StatusGone)
+			return
+		}
 		log.Println("Cache HIT for", shortCode)
-		recordClick(shortCode) // async analytics via gRPC
+		recordClick(shortCode)
 		http.Redirect(w, r, longURL, http.StatusFound)
 		return
 	}
 
-	// Step 2: Cache MISS — query PostgreSQL
+	// Step 2: Cache MISS — query PostgreSQL (also checks expiry)
 	log.Println("Cache MISS for", shortCode)
 	longURL, err := postgres.GetLongURL(shortCode)
 	if err != nil {
+		if err.Error() == "URL has expired" {
+			http.Error(w, `{"error": "URL has expired"}`, http.StatusGone)
+			return
+		}
 		http.Error(w, `{"error": "short URL not found"}`, http.StatusNotFound)
 		return
 	}

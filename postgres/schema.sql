@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS urls (
     id         SERIAL PRIMARY KEY,
     short_code VARCHAR(10) UNIQUE NOT NULL,
     long_url   TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    expires_at TIMESTAMP NULL  -- NULL means no expiration
 );
 
 -- Table to store click analytics
