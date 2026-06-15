@@ -98,8 +98,8 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println("Analytics insert error:", err)
 	}
 
-	// Cache in Redis
-	goredis.SetCachedURL(shortCode, req.URL)
+	// Cache in Redis — pass expiresAt so Redis TTL mirrors URL lifetime
+	goredis.SetCachedURL(shortCode, req.URL, expiresAt)
 
 	// Return response
 	resp := ShortenResponse{
@@ -116,23 +116,18 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 	shortCode := mux.Vars(r)["shortCode"]
 
-	// Step 1: Check Redis cache (cache doesn't store expiry, so always verify via DB on miss)
+	// Step 1: Cache HIT — Redis TTL already enforces expiry, no DB check needed.
+	// If the URL was expired, Redis would have evicted the key already.
 	if longURL, found := goredis.GetCachedURL(shortCode); found {
-		// Verify the URL hasn't expired in DB (lightweight check)
-		if _, err := postgres.GetLongURL(shortCode); err != nil {
-			goredis.DeleteCachedURL(shortCode)
-			http.Error(w, `{"error": "URL has expired or not found"}`, http.StatusGone)
-			return
-		}
 		log.Println("Cache HIT for", shortCode)
 		recordClick(shortCode)
 		http.Redirect(w, r, longURL, http.StatusFound)
 		return
 	}
 
-	// Step 2: Cache MISS — query PostgreSQL (also checks expiry)
+	// Step 2: Cache MISS — query PostgreSQL (checks expiry, returns expiresAt for cache TTL)
 	log.Println("Cache MISS for", shortCode)
-	longURL, err := postgres.GetLongURL(shortCode)
+	longURL, expiresAt, err := postgres.GetLongURL(shortCode)
 	if err != nil {
 		if err.Error() == "URL has expired" {
 			http.Error(w, `{"error": "URL has expired"}`, http.StatusGone)
@@ -142,8 +137,8 @@ func RedirectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 3: Refill cache
-	goredis.SetCachedURL(shortCode, longURL)
+	// Step 3: Refill cache — set Redis TTL to match URL's remaining lifetime
+	goredis.SetCachedURL(shortCode, longURL, expiresAt)
 
 	// Record the click via gRPC
 	recordClick(shortCode)

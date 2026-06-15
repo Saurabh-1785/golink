@@ -49,9 +49,24 @@ func GetCachedURL(shortCode string) (string, bool) {
 	return val, true
 }
 
-// SetCachedURL stores a URL mapping in Redis with TTL.
-func SetCachedURL(shortCode, longURL string) {
-	err := Client.Set(Ctx, "url:"+shortCode, longURL, CacheTTL).Err()
+// SetCachedURL stores a URL mapping in Redis.
+// If expiresAt is set, the Redis TTL mirrors the URL's remaining lifetime.
+// If expiresAt is nil (never expires), the standard CacheTTL is used.
+// This means Redis evicts expired URLs automatically — no DB check needed on HIT.
+func SetCachedURL(shortCode, longURL string, expiresAt *time.Time) {
+	ttl := CacheTTL
+	if expiresAt != nil {
+		remaining := time.Until(*expiresAt)
+		if remaining <= 0 {
+			// Already expired — don't cache it at all
+			return
+		}
+		// Use the shorter of CacheTTL and remaining lifetime
+		if remaining < CacheTTL {
+			ttl = remaining
+		}
+	}
+	err := Client.Set(Ctx, "url:"+shortCode, longURL, ttl).Err()
 	if err != nil {
 		log.Println("Redis SET error:", err)
 	}

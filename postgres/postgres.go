@@ -56,8 +56,10 @@ func SaveURL(shortCode, longURL string, expiresAt *time.Time) error {
 }
 
 // GetLongURL retrieves the original URL for a given short code.
+// Also returns the expiry time (nil if never expires) so callers can
+// set the Redis TTL precisely, avoiding future DB re-checks on cache HITs.
 // Returns an error if the URL has expired.
-func GetLongURL(shortCode string) (string, error) {
+func GetLongURL(shortCode string) (string, *time.Time, error) {
 	var longURL string
 	var expiresAt sql.NullTime
 
@@ -66,15 +68,18 @@ func GetLongURL(shortCode string) (string, error) {
 		shortCode,
 	).Scan(&longURL, &expiresAt)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	// Check expiration
 	if expiresAt.Valid && time.Now().After(expiresAt.Time) {
-		return "", fmt.Errorf("URL has expired")
+		return "", nil, fmt.Errorf("URL has expired")
 	}
 
-	return longURL, nil
+	if expiresAt.Valid {
+		return longURL, &expiresAt.Time, nil
+	}
+	return longURL, nil, nil
 }
 
 // ShortCodeExists checks if a short code is already taken.
