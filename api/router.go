@@ -14,12 +14,15 @@ func NewRouter() *mux.Router { // * -> returns a pointer to a Router object.
 	// POST /shorten — create a new short URL
 	r.HandleFunc("/shorten", ShortenHandler).Methods("POST") //route1: when a POST request is made to /shorten, the ShortenHandler function will be called.
 
+	// POST /suggest-slugs — get AI-generated slug suggestions
+	r.HandleFunc("/suggest-slugs", SuggestSlugsHandler).Methods("POST") //route2: when a POST request is made to /suggest-slugs, the SuggestSlugsHandler function will be called. Uses Gemini AI to generate meaningful short URL slugs.
+
 	// GET /analytics/{shortCode} — get click stats
 	// This must be before the redirect catch-all
-	r.HandleFunc("/analytics/{shortCode}", AnalyticsHandler).Methods("GET") //route2: when a GET request is made to /analytics/{shortCode}, the AnalyticsHandler function will be called. {shortCode} is a path variable that can be accessed in the handler.
+	r.HandleFunc("/analytics/{shortCode}", AnalyticsHandler).Methods("GET") //route3: when a GET request is made to /analytics/{shortCode}, the AnalyticsHandler function will be called. {shortCode} is a path variable that can be accessed in the handler.
 
 	// GET /{shortCode} — redirect to original URL
-	r.HandleFunc("/{shortCode}", RedirectHandler).Methods("GET") //route3: when a GET request is made to /{shortCode}, the RedirectHandler function will be called. This is a catch-all route for any short code, so it must be defined after the more specific routes.
+	r.HandleFunc("/{shortCode}", RedirectHandler).Methods("GET") //route4: when a GET request is made to /{shortCode}, the RedirectHandler function will be called. This is a catch-all route for any short code, so it must be defined after the more specific routes.
 
 	return r
 }

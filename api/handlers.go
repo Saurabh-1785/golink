@@ -9,6 +9,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/Saurabh/golink/ai"
 	"github.com/Saurabh/golink/postgres"
 	goredis "github.com/Saurabh/golink/redis"
 
@@ -35,6 +36,16 @@ type AnalyticsResponse struct {
 	ShortCode    string `json:"short_code"`
 	ClickCount   int64  `json:"click_count"`
 	LastClicked  string `json:"last_clicked_at,omitempty"`
+}
+
+// SuggestSlugsRequest is the JSON body for POST /suggest-slugs.
+type SuggestSlugsRequest struct {
+	URL string `json:"url"`
+}
+
+// SuggestSlugsResponse is the JSON response for POST /suggest-slugs.
+type SuggestSlugsResponse struct {
+	Suggestions []string `json:"suggestions"`
 }
 
 // grpcClient connects to the analytics gRPC service.
@@ -67,8 +78,8 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	shortCode := req.CustomAlias
 	if shortCode != "" {
 		// Validate: only alphanumeric, 3-10 chars
-		if len(shortCode) < 3 || len(shortCode) > 10 {
-			http.Error(w, `{"error": "custom_alias must be 3-10 characters"}`, http.StatusBadRequest)
+		if len(shortCode) < 3 || len(shortCode) > 30 {
+			http.Error(w, `{"error": "custom_alias must be 3-30 characters"}`, http.StatusBadRequest)
 			return
 		}
 		if postgres.ShortCodeExists(shortCode) {
@@ -210,4 +221,54 @@ func recordClick(shortCode string) {
 			postgres.IncrementClick(shortCode)
 		}
 	}()
+}
+
+// SuggestSlugsHandler handles POST /suggest-slugs
+// It fetches webpage metadata, sends it to Gemini, and returns AI-generated slug suggestions.
+func SuggestSlugsHandler(w http.ResponseWriter, r *http.Request) {
+	// Check if AI is available
+	if !ai.IsAvailable() {
+		http.Error(w, `{"error": "AI slug suggestions are unavailable (GEMINI_API_KEY not configured)"}`, http.StatusServiceUnavailable)
+		return
+	}
+
+	var req SuggestSlugsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" {
+		http.Error(w, `{"error": "invalid request, provide 'url' field"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Step 1: Fetch webpage metadata (title + description)
+	log.Println("Fetching metadata for:", req.URL)
+	meta := ai.FetchMetadata(req.URL)
+	log.Printf("Metadata — Title: %q, Description: %q\n", meta.Title, meta.Description)
+
+	// Step 2: Generate slug suggestions via Gemini
+	slugs, err := ai.GenerateSlugs(meta.Title, meta.Description)
+	if err != nil {
+		log.Println("AI slug generation error:", err)
+		http.Error(w, `{"error": "failed to generate slug suggestions"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Step 3: Filter out slugs that already exist in the database
+	var available []string
+	for _, slug := range slugs {
+		if !postgres.ShortCodeExists(slug) {
+			available = append(available, slug)
+		}
+	}
+
+	// If all suggestions are taken, return what we have with a note
+	if len(available) == 0 {
+		available = slugs // Return them anyway — user can still edit
+		log.Println("Warning: All suggested slugs already exist in DB")
+	}
+
+	// Return suggestions
+	resp := SuggestSlugsResponse{
+		Suggestions: available,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }

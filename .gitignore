@@ -10,3 +10,8 @@ analytics-service
 # OS
 .DS_Store
 Thumbs.db
+
+project.md
+benchmark.sh
+
+/docs

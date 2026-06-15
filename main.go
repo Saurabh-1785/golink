@@ -4,6 +4,7 @@ import (
 	"log" //simple console logging during startup
 	"os" // Used for interacting with the operating system like read environment variables
 
+	"github.com/Saurabh/golink/ai"  //handles Gemini AI client for slug suggestions
 	"github.com/Saurabh/golink/api" //starts the HTTP server and holds the gRPC client init
 	"github.com/Saurabh/golink/postgres" //handles PostgreSQL connection
 	goredis "github.com/Saurabh/golink/redis" //handles Redis connection
@@ -22,6 +23,9 @@ func main() {
 
 	// Connect to Redis
 	goredis.Connect()
+
+	// Initialize Gemini AI client for slug suggestions
+	ai.InitGemini()
 
 	// Connect to Analytics gRPC Service: reads ANALYTICS_GRPC_ADDR, If not found:localhost:50051 is used.
 	grpcAddr := getEnv("ANALYTICS_GRPC_ADDR", "localhost:50051")

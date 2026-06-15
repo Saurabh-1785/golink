@@ -59,6 +59,7 @@ services:
       DB_NAME: golink
       REDIS_ADDR: redis:6379
       ANALYTICS_GRPC_ADDR: analytics-service:50051
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
       PORT: "8080"
     ports:
       - "8080:8080"
