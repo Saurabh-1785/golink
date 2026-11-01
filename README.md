@@ -90,8 +90,7 @@ golink/
 │   └── postgres.go            # DB connection & queries
 ├── redis/
 │   └── redis.go               # Redis cache helpers
-├── Dockerfile                 # URL Service container
-├── Dockerfile.analytics       # Analytics Service container
+├── Dockerfile                 # Multi-target build: url-service + analytics-service images
 ├── docker-compose.yml         # Orchestration
 └── README.md
 ```

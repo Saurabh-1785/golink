@@ -2,16 +2,23 @@ package postgres
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 // DB is the global database connection.
 var DB *sql.DB
+
+// ErrDuplicateShortCode is returned by SaveURL when the short code already exists.
+var ErrDuplicateShortCode = errors.New("short code already exists")
+
+// pgUniqueViolation is the PostgreSQL error code for unique constraint violations.
+const pgUniqueViolation = "23505"
 
 // Connect opens a connection to PostgreSQL using env variables.
 func Connect() {
@@ -47,11 +54,17 @@ func Connect() {
 
 // SaveURL inserts a new short URL mapping into the database.
 // expiresAt is optional — pass nil for no expiration.
+// Returns ErrDuplicateShortCode if the short code is already taken, so callers
+// can rely on the UNIQUE constraint instead of a racy check-then-insert.
 func SaveURL(shortCode, longURL string, expiresAt *time.Time) error {
 	_, err := DB.Exec(
 		"INSERT INTO urls (short_code, long_url, expires_at) VALUES ($1, $2, $3)",
 		shortCode, longURL, expiresAt,
 	)
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) && pqErr.Code == pgUniqueViolation {
+		return ErrDuplicateShortCode
+	}
 	return err
 }
 

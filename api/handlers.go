@@ -3,8 +3,12 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
+	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -48,6 +52,25 @@ type SuggestSlugsResponse struct {
 	Suggestions []string `json:"suggestions"`
 }
 
+// aliasPattern restricts custom aliases to URL-safe characters, 3-30 long
+// (matches the VARCHAR(30) short_code column).
+var aliasPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{3,30}$`)
+
+// maxCodeAttempts bounds retries when a generated short code collides.
+const maxCodeAttempts = 5
+
+// baseURL is the public prefix for short links, e.g. "https://go.example.com".
+// Configured via BASE_URL; defaults to local dev.
+var baseURL = strings.TrimRight(envOr("BASE_URL", "http://localhost:8080"), "/")
+
+// envOr reads an env variable with a fallback default.
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
 // grpcClient connects to the analytics gRPC service.
 var grpcClient pb.AnalyticsServiceClient
 
@@ -74,20 +97,11 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine short code (custom alias or auto-generated)
-	shortCode := req.CustomAlias
-	if shortCode != "" {
-		// Validate: only alphanumeric, 3-10 chars
-		if len(shortCode) < 3 || len(shortCode) > 30 {
-			http.Error(w, `{"error": "custom_alias must be 3-30 characters"}`, http.StatusBadRequest)
-			return
-		}
-		if postgres.ShortCodeExists(shortCode) {
-			http.Error(w, `{"error": "custom alias already taken"}`, http.StatusConflict)
-			return
-		}
-	} else {
-		shortCode = GenerateShortCode()
+	// Validate custom alias: letters, digits, hyphen, underscore; 3-30 chars.
+	// Hyphens are allowed so AI-suggested slugs (e.g. "learn-go") can be used.
+	if req.CustomAlias != "" && !aliasPattern.MatchString(req.CustomAlias) {
+		http.Error(w, `{"error": "custom_alias must be 3-30 characters of letters, digits, '-' or '_'"}`, http.StatusBadRequest)
+		return
 	}
 
 	// Compute optional expiry time
@@ -97,8 +111,28 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 		expiresAt = &t
 	}
 
-	// Save to PostgreSQL
-	if err := postgres.SaveURL(shortCode, req.URL, expiresAt); err != nil {
+	// Save to PostgreSQL. The UNIQUE constraint is the source of truth for
+	// availability (no check-then-insert race):
+	//   - custom alias taken      -> 409
+	//   - generated code collides -> retry with a fresh code
+	var shortCode string
+	var err error
+	for attempt := 0; attempt < maxCodeAttempts; attempt++ {
+		shortCode = req.CustomAlias
+		if shortCode == "" {
+			shortCode = GenerateShortCode()
+		}
+		err = postgres.SaveURL(shortCode, req.URL, expiresAt)
+		if !errors.Is(err, postgres.ErrDuplicateShortCode) || req.CustomAlias != "" {
+			break
+		}
+		log.Println("Short code collision, retrying:", shortCode)
+	}
+	if errors.Is(err, postgres.ErrDuplicateShortCode) && req.CustomAlias != "" {
+		http.Error(w, `{"error": "custom alias already taken"}`, http.StatusConflict)
+		return
+	}
+	if err != nil {
 		log.Println("DB save error:", err)
 		http.Error(w, `{"error": "could not save URL"}`, http.StatusInternalServerError)
 		return
@@ -115,7 +149,7 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	// Return response
 	resp := ShortenResponse{
 		ShortCode: shortCode,
-		ShortURL:  "http://localhost:8080/" + shortCode,
+		ShortURL:  baseURL + "/" + shortCode,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

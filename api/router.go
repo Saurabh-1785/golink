@@ -12,10 +12,12 @@ func NewRouter() *mux.Router { // * -> returns a pointer to a Router object.
 	r := mux.NewRouter() //Creates an empty router
 
 	// POST /shorten — create a new short URL
-	r.HandleFunc("/shorten", ShortenHandler).Methods("POST") //route1: when a POST request is made to /shorten, the ShortenHandler function will be called.
+	// Rate limited (10 req/min per IP): creates rows in the DB.
+	r.Handle("/shorten", RateLimitMiddleware(http.HandlerFunc(ShortenHandler))).Methods("POST") //route1: when a POST request is made to /shorten, the ShortenHandler function will be called.
 
 	// POST /suggest-slugs — get AI-generated slug suggestions
-	r.HandleFunc("/suggest-slugs", SuggestSlugsHandler).Methods("POST") //route2: when a POST request is made to /suggest-slugs, the SuggestSlugsHandler function will be called. Uses Gemini AI to generate meaningful short URL slugs.
+	// Rate limited: each call hits the paid Gemini API and fetches a remote page.
+	r.Handle("/suggest-slugs", RateLimitMiddleware(http.HandlerFunc(SuggestSlugsHandler))).Methods("POST") //route2: when a POST request is made to /suggest-slugs, the SuggestSlugsHandler function will be called. Uses Gemini AI to generate meaningful short URL slugs.
 
 	// GET /analytics/{shortCode} — get click stats
 	// This must be before the redirect catch-all
@@ -31,8 +33,9 @@ func NewRouter() *mux.Router { // * -> returns a pointer to a Router object.
 func StartServer(port string) {
 	router := NewRouter()
 	log.Println("URL Service running on port", port)
-	// Wrap the router with the rate limiter (10 req/min per IP)
-	log.Fatal(http.ListenAndServe(":"+port, RateLimitMiddleware(router)))
+	// Rate limiting is applied per-route in NewRouter (write/AI endpoints only),
+	// so redirects — the hot path — are never throttled.
+	log.Fatal(http.ListenAndServe(":"+port, router))
 }
 
 
