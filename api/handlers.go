@@ -59,9 +59,12 @@ var aliasPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{3,30}$`)
 // maxCodeAttempts bounds retries when a generated short code collides.
 const maxCodeAttempts = 5
 
-// baseURL is the public prefix for short links, e.g. "https://go.example.com".
-// Configured via BASE_URL; defaults to local dev.
-var baseURL = strings.TrimRight(envOr("BASE_URL", "http://localhost:8080"), "/")
+// publicBaseURL returns the public prefix for short links, e.g. "https://go.example.com".
+// Configured via BASE_URL; defaults to local dev. Read at call time, not in a
+// package-level var, because package vars initialize before main() loads .env.
+func publicBaseURL() string {
+	return strings.TrimRight(envOr("BASE_URL", "http://localhost:8080"), "/")
+}
 
 // envOr reads an env variable with a fallback default.
 func envOr(key, fallback string) string {
@@ -149,7 +152,7 @@ func ShortenHandler(w http.ResponseWriter, r *http.Request) {
 	// Return response
 	resp := ShortenResponse{
 		ShortCode: shortCode,
-		ShortURL:  baseURL + "/" + shortCode,
+		ShortURL:  publicBaseURL() + "/" + shortCode,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

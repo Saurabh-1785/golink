@@ -1,18 +1,20 @@
+# Values come from .env (auto-loaded by Compose); see .env.example.
+# Hostnames stay fixed here because containers reach each other by service name.
 services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: golink
-      POSTGRES_PASSWORD: golink123
-      POSTGRES_DB: golink
+      POSTGRES_USER: ${DB_USER:-golink}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-golink123}
+      POSTGRES_DB: ${DB_NAME:-golink}
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/schema.sql:/docker-entrypoint-initdb.d/schema.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U golink"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-golink}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -37,12 +39,12 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: "5432"
-      DB_USER: golink
-      DB_PASSWORD: golink123
-      DB_NAME: golink
-      GRPC_PORT: "50051"
+      DB_USER: ${DB_USER:-golink}
+      DB_PASSWORD: ${DB_PASSWORD:-golink123}
+      DB_NAME: ${DB_NAME:-golink}
+      GRPC_PORT: ${GRPC_PORT:-50051}
     ports:
-      - "50051:50051"
+      - "${GRPC_PORT:-50051}:${GRPC_PORT:-50051}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,16 +58,16 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: "5432"
-      DB_USER: golink
-      DB_PASSWORD: golink123
-      DB_NAME: golink
+      DB_USER: ${DB_USER:-golink}
+      DB_PASSWORD: ${DB_PASSWORD:-golink123}
+      DB_NAME: ${DB_NAME:-golink}
       REDIS_ADDR: redis:6379
-      ANALYTICS_GRPC_ADDR: analytics-service:50051
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      PORT: "8080"
+      ANALYTICS_GRPC_ADDR: analytics-service:${GRPC_PORT:-50051}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      PORT: ${PORT:-8080}
       BASE_URL: ${BASE_URL:-http://localhost:8080}
     ports:
-      - "8080:8080"
+      - "${PORT:-8080}:${PORT:-8080}"
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,0 +1,7 @@
+# Keep secrets and non-build files out of the Docker build context.
+.env
+.env.*
+.git
+docs
+*.md
+benchmark.sh

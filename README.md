@@ -35,6 +35,9 @@ Client → REST API (port 8080)
 ## Quick Start
 
 ```bash
+# Create your local config (add GEMINI_API_KEY to enable AI slug suggestions)
+cp .env.example .env
+
 # Start all services
 docker compose up --build
 
@@ -125,6 +128,10 @@ golink/
 
 ## Environment Variables
 
+Set these in `.env` (copy it from `.env.example`; git ignores it). Docker Compose reads the file automatically, and both Go services load it at startup for local `go run`. Real environment variables take priority.
+
+Inside Docker, `DB_HOST`, `REDIS_ADDR` and `ANALYTICS_GRPC_ADDR` are fixed to the Compose service names in `docker-compose.yml`. The `.env` values for those three apply to `go run` only.
+
 | Variable             | Default          | Description                  |
 |----------------------|------------------|------------------------------|
 | PORT                 | 8080             | HTTP server port             |
@@ -136,6 +143,8 @@ golink/
 | REDIS_ADDR           | localhost:6379   | Redis address                |
 | ANALYTICS_GRPC_ADDR  | localhost:50051  | Analytics gRPC service addr  |
 | GRPC_PORT            | 50051            | Analytics gRPC server port   |
+| BASE_URL             | http://localhost:8080 | Public prefix of short links |
+| GEMINI_API_KEY       | (none)           | Enables POST /suggest-slugs  |
 
 ## POST /shorten Request Body
 

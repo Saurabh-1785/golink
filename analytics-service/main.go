@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 
+	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
 
 	"github.com/Saurabh/golink/postgres"
@@ -51,6 +52,12 @@ func (s *server) GetStats(ctx context.Context, req *pb.GetStatsRequest) (*pb.Get
 }
 
 func main() {
+	// Load .env for local runs. Real environment variables win; in Docker
+	// the file isn't present and Compose sets everything.
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file loaded, using environment variables only")
+	}
+
 	// Connect to PostgreSQL
 	postgres.Connect()
 

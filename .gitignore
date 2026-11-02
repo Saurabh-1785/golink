@@ -1,3 +1,6 @@
+# Local config with secrets (.env.example IS committed)
+.env
+
 # Binaries (anchored so the analytics-service/ source dir is NOT ignored)
 /golink
 /analytics-service/analytics-service

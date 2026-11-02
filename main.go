@@ -4,6 +4,8 @@ import (
 	"log" //simple console logging during startup
 	"os" // Used for interacting with the operating system like read environment variables
 
+	"github.com/joho/godotenv" //loads variables from the .env file
+
 	"github.com/Saurabh/golink/ai"  //handles Gemini AI client for slug suggestions
 	"github.com/Saurabh/golink/api" //starts the HTTP server and holds the gRPC client init
 	"github.com/Saurabh/golink/postgres" //handles PostgreSQL connection
@@ -17,6 +19,12 @@ import (
 
 func main() {
 	log.Println("Starting GoLink URL Service...")
+
+	// Load .env for local runs (`go run .`). Variables already set in the real
+	// environment win. In Docker the file isn't present, and Compose sets everything.
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file loaded, using environment variables only")
+	}
 
 	// Connect to PostgreSQL: Open Database Connection -> Check Connection ->Store DB Instance
 	postgres.Connect()
